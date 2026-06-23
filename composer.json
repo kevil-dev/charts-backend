@@ -1,0 +1,7 @@
+{
+    "require": {
+        "guzzlehttp/guzzle": "^7.5",
+        "rakit/validation": "^1.4",
+        "usmanhalalit/pixie": "2.*@dev"
+    }
+}
