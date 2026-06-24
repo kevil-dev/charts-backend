@@ -3,34 +3,11 @@ namespace App\Models;
 
 use App\Enums\ChartsEnum;
 
-/**
- * ChartsModel
- *
- * Single model that handles all chart-related DB queries across
- * Apple, Spotify, and YouTube. Platform routing is driven by
- * ChartsEnum — zero hardcoded table names here.
- *
- * Public API
- * ----------
- * getLatestRunDate(string $platform, string $country, string $chart): ?string
- * getCount(string $platform, string $country, string $chart): int
- * getCharts(string $platform, string $country, string $chart, int $limit, int $offset): array
- * getFilterCountries(string $platform): array
- * getFilterGenres(string $platform, string $country): array
- */
 class ChartsModel
 {
-    // ---------------------------------------------------------------
-    // PUBLIC — LATEST RUN DATE
-    // ---------------------------------------------------------------
-
     /**
      * Returns the most recent run_date that exists in the platform
      * table for the given country + chart combination.
-     *
-     * Why: we never want to show "no data" just because today hasn't
-     * been scraped yet. We always show the freshest snapshot.
-     *
      * Returns null when the table is completely empty for those filters.
      */
     public function getLatestRunDate(string $platform, string $country, string $chart): ?string
@@ -47,11 +24,6 @@ class ChartsModel
 
         return $row && $row->latest_date ? $row->latest_date : null;
     }
-
-    // ---------------------------------------------------------------
-    // PUBLIC — COUNT (for pagination)
-    // ---------------------------------------------------------------
-
     /**
      * Total rows for the given filter set on the latest run_date.
      * Called by the controller before getCharts() to build pagination.
@@ -77,13 +49,8 @@ class ChartsModel
         return (int) $q->count();
     }
 
-    // ---------------------------------------------------------------
-    // PUBLIC — CHARTS LIST
-    // ---------------------------------------------------------------
-
     /**
-     * Returns paginated chart rows for a single platform snapshot.
-     *
+     
      * Shape guarantee (every platform returns these keys):
      *   id, chart_rank, rank_move, name, artist_or_publisher,
      *   artwork, url_or_null, external_id, match_key,
@@ -93,8 +60,7 @@ class ChartsModel
      *   on_youtube (bool), youtube_url (string|null)
      *
      * "artist_or_publisher" normalises: Apple→artist, Spotify→publisher,
-     * YouTube→channel. The controller/frontend never needs to know
-     * which column it came from.
+     * YouTube→channel.
      */
     public function getCharts(
         string $platform,
@@ -113,8 +79,6 @@ class ChartsModel
             return [];
         }
 
-        // Build the raw query per platform — they have different
-        // column names but we normalise them in SELECT aliases.
         $rows = match ($platform) {
             ChartsEnum::APPLE   => $this->fetchApple($table, $country, $chart, $runDate, $limit, $offset),
             ChartsEnum::SPOTIFY => $this->fetchSpotify($table, $country, $chart, $runDate, $limit, $offset),
@@ -127,15 +91,9 @@ class ChartsModel
         return array_map(fn($r) => (array) $r, $rows);
     }
 
-    // ---------------------------------------------------------------
-    // PUBLIC — FILTERS
-    // ---------------------------------------------------------------
-
     /**
      * Returns only countries that have actual data for the platform
      * in the most recent scrape run.
-     *
-     * Returns: [['country_code'=>'US','display_name'=>'United States','flag'=>'🇺🇸'], ...]
      */
     public function getFilterCountries(string $platform): array
     {
@@ -177,17 +135,6 @@ class ChartsModel
 
     /**
      * Returns genres that have actual data for the given platform + country.
-     *
-     * Country is required because genre availability varies per country —
-     * e.g. Japan may have genres that the US does not, and vice versa.
-     * We only show genres that have rows in the latest scrape for that country.
-     *
-     * Apple   → JOIN genres ON genre_id = native_id WHERE platform='apple' AND country_code=$country
-     * Spotify → distinct chart slugs for that country
-     * YouTube → no genres; returns empty array
-     *
-     * Returns: [['native_id'=>'1488','display_name'=>'True Crime'], ...]
-     *          or for Spotify: [['native_id'=>'top-podcasts','display_name'=>'Top Podcasts'], ...]
      */
     public function getFilterGenres(string $platform, string $country): array
     {
@@ -198,10 +145,6 @@ class ChartsModel
             default             => [],
         };
     }
-
-    // ---------------------------------------------------------------
-    // PRIVATE — PLATFORM-SPECIFIC FETCH QUERIES
-    // ---------------------------------------------------------------
 
     /**
      * Apple: genre_id can be a native genre id (e.g. '1488') or 'top'.
@@ -337,18 +280,8 @@ class ChartsModel
         return (array) $rows;
     }
 
-    // ---------------------------------------------------------------
-    // PRIVATE — ENRICHMENT
-    // ---------------------------------------------------------------
-
     /**
      * Enriches a page of chart rows with cross-platform presence flags and links.
-     *
-     * Runs 3 batch queries (one per platform table), each scoped to that
-     * platform's own latest run_date for the given country. Adds:
-     *   on_apple (bool), apple_url (string|null),
-     *   on_spotify (bool), spotify_id (string|null),
-     *   on_youtube (bool), youtube_url (string|null)
      */
     private function enrichWithPlatformLinks(array $rows, string $country): array
     {
@@ -423,16 +356,6 @@ class ChartsModel
 
         return $rows;
     }
-
-    // ---------------------------------------------------------------
-    // PRIVATE — FILTER HELPERS
-    // ---------------------------------------------------------------
-
-    /**
-     * Apple genres: only returns genres that have rows for this specific
-     * country in the latest scrape. Scoped by country so the dropdown
-     * only shows genres that actually have data to display.
-     */
     private function getAppleGenres(string $country): array
     {
         $t  = ChartsEnum::APPLE_MAIN_TBL;
@@ -451,12 +374,6 @@ class ChartsModel
 
         return array_map(fn($r) => (array) $r, (array) $rows);
     }
-
-    /**
-     * Spotify "genres" are chart slugs stored in the chart column.
-     * Scoped by country — not every country has 'trending', for example.
-     * We pull distinct slugs for this country and map to human labels.
-     */
     private function getSpotifyCharts(string $country): array
     {
         $rows = \QB::table(ChartsEnum::SPOTIFY_MAIN_TBL)
@@ -478,11 +395,6 @@ class ChartsModel
 
         return $result;
     }
-
-    // ---------------------------------------------------------------
-    // PRIVATE — SHARED QUERY HELPER
-    // ---------------------------------------------------------------
-
     /**
      * Applies the correct WHERE clause for the chart/genre column
      * depending on the platform. Mutates the Pixie query builder $q.

@@ -25,8 +25,8 @@ class Controller {
     
     // public $userobj;
     // public $payment;
-    // public $auto_id;
-    // public $email_id;
+    public $auto_id;
+    public $email_id;
     // public $paid;
     // public $trial;
     // public $payment_status;
@@ -43,6 +43,10 @@ class Controller {
     // public $account_mdl;
     // public $payment_mdl;
     
+    public $payload;
+    public $content_type;
+    public $headers;
+
     public $pagination_limit;
     public $pagination_offset;
     
@@ -95,7 +99,18 @@ class Controller {
 	    !empty(self::$skip_auth) ? "" : call_user_func_array([$this->mw[$middleware_name], $method], $middleware_params);
 	}
 	
-	// public function verifyAuthToken() { ... }
+	public function verifyAuthToken() {
+        $token = str_replace('Bearer ', '', $this->user_token);
+        if (empty($token)) {
+            $this->sendJson(ResponseStatusEnum::UNAUTHORIZED);
+        }
+        $payload = \Library\Jwt::validate($token);
+        if (!$payload) {
+            $this->sendJson(ResponseStatusEnum::UNAUTHORIZED);
+        }
+        $this->auto_id  = (int) decrypt($payload['user_id']);
+        $this->email_id = $payload['email'] ?? '';
+    }
 	// public function setObj($user) { ... }
 	// public function isPaid() { ... }
 	// public function is_trial() { ... }

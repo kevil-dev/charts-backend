@@ -7,17 +7,14 @@ $router = new \Library\Router();
 $router->setBasePath(ROUTER_BASE_PATH);
 $router->setNamespace("\App\Controllers");
 
-// --- Charts API ---
+$router->mount('/auth', function() use ($router) {
+    $router->post('/register', 'AuthController@register');
+    $router->post('/login',    'AuthController@login');
+    $router->get('/me',        'AuthController@me');
+});
+
 $router->mount('/charts', function() use ($router) {
-
-    // GET /charts
-    // returns chart rows for the given platform/country/chart
-    // query params: ?platform=apple&country=US&chart=top
     $router->get('/', 'ChartsController@getCharts');
-
-    // GET /charts/filters
-    // returns available countries + genres for the dropdowns
-    // (built from the data, not hardcoded)
     $router->get('/filters', 'ChartsController@getFilters');
 
 });

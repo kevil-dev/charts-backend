@@ -10,8 +10,19 @@ trait ToolsTrait {
     public function getPayloads($request_method) {
         $this->input = new Input();
         $input = $request_method == "post" ? $this->input->post() : $this->input->get();
-        $input = self::trim_arr($input); 
-        
+
+        // $_POST is empty when client sends Content-Type: application/json
+        // — the body arrives in php://input instead, so decode it as fallback
+        if ($request_method == "post" && empty($input)) {
+            $raw = file_get_contents('php://input');
+            $json = json_decode($raw, true);
+            if (is_array($json)) {
+                $input = $json;
+            }
+        }
+
+        $input = self::trim_arr($input);
+
         return $input;
     }    
     public function trim_arr(&$input_array) {

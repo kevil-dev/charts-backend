@@ -4,7 +4,7 @@ namespace Library;
 
 class Jwt {
 
-    static private $secret = JWT_SECRET;
+    static private $secret = \JWT_SECRET;
     static private $jwt_algorith = 'HS256';
     static private $hash_algorith = 'sha256';
 
@@ -38,42 +38,34 @@ class Jwt {
     }
 
     public static function validate($jwt) {
-
-        // split the token
-        $tokenParts = explode('.', $jwt);
-        $header = base64_decode($tokenParts[0]);
-        $payload = base64_decode($tokenParts[1]);
-        $signatureProvided = $tokenParts[2];
-
-        // check the expiration time - note this will cause an error if there is no 'exp' claim in the token
-        // echo $expiration = Carbon::createFromTimestamp(json_decode($payload)->exp);
-        // $tokenExpired = (Carbon::now()->diffInSeconds($expiration, false) < 0);
-
-        // build a signature based on the header and payload using the secret
-        $base64UrlHeader = base64UrlEncode($header);
-        $base64UrlPayload = base64UrlEncode($payload);
-        $signature = hash_hmac(self::$hash_algorith, $base64UrlHeader . "." . $base64UrlPayload, self::$secret, true);
-        $base64UrlSignature = base64UrlEncode($signature);
-
-        // verify it matches the signature provided in the token
-        $signatureValid = ($base64UrlSignature === $signatureProvided);
-
-        // echo "Header:\n" . $header . "\n";
-        // echo "Payload:\n" . $payload . "\n";
-
-        // if ($tokenExpired) {
-            // echo "Token has expired.\n";
-        // } else {
-            // echo "Token has not expired yet.\n";
-        // }
-
-        if ($signatureValid) {
-            // echo "The signature is valid.\n";
-            return true;
-        } else {
-            // echo "The signature is NOT valid\n";
+        if (empty($jwt)) {
             return false;
         }
+
+        $tokenParts = explode('.', $jwt);
+        if (count($tokenParts) !== 3) {
+            return false;
+        }
+
+        $header            = base64_decode($tokenParts[0]);
+        $payload           = base64_decode($tokenParts[1]);
+        $signatureProvided = $tokenParts[2];
+
+        if ($header === false || $payload === false) {
+            return false;
+        }
+
+        $base64UrlHeader    = base64UrlEncode($header);
+        $base64UrlPayload   = base64UrlEncode($payload);
+        $signature          = hash_hmac(self::$hash_algorith, $base64UrlHeader . "." . $base64UrlPayload, self::$secret, true);
+        $base64UrlSignature = base64UrlEncode($signature);
+
+        if ($base64UrlSignature !== $signatureProvided) {
+            return false;
+        }
+
+        $decoded = json_decode($payload, true);
+        return is_array($decoded) ? $decoded : false;
     }
 
 }
