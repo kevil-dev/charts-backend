@@ -87,7 +87,10 @@ class ChartsModel
      * Shape guarantee (every platform returns these keys):
      *   id, chart_rank, rank_move, name, artist_or_publisher,
      *   artwork, url_or_null, external_id, match_key,
-     *   country_code, country_name, flag, genre_label, run_date
+     *   country_code, country_name, flag, genre_label, run_date,
+     *   on_apple (bool), apple_url (string|null),
+     *   on_spotify (bool), spotify_id (string|null),
+     *   on_youtube (bool), youtube_url (string|null)
      *
      * "artist_or_publisher" normalises: Apple→artist, Spotify→publisher,
      * YouTube→channel. The controller/frontend never needs to know
@@ -118,6 +121,8 @@ class ChartsModel
             ChartsEnum::YOUTUBE => $this->fetchYoutube($table, $country, $runDate, $limit, $offset),
             default             => [],
         };
+
+        $rows = $this->enrichWithPlatformLinks($rows, $country);
 
         return array_map(fn($r) => (array) $r, $rows);
     }
@@ -330,6 +335,93 @@ class ChartsModel
             ->get();
 
         return (array) $rows;
+    }
+
+    // ---------------------------------------------------------------
+    // PRIVATE — ENRICHMENT
+    // ---------------------------------------------------------------
+
+    /**
+     * Enriches a page of chart rows with cross-platform presence flags and links.
+     *
+     * Runs 3 batch queries (one per platform table), each scoped to that
+     * platform's own latest run_date for the given country. Adds:
+     *   on_apple (bool), apple_url (string|null),
+     *   on_spotify (bool), spotify_id (string|null),
+     *   on_youtube (bool), youtube_url (string|null)
+     */
+    private function enrichWithPlatformLinks(array $rows, string $country): array
+    {
+        $matchKeys = array_values(array_filter(
+            array_map(fn($r) => $r->match_key ?? '', $rows)
+        ));
+
+        if (empty($matchKeys)) {
+            return $rows;
+        }
+
+        $apple   = ChartsEnum::APPLE_MAIN_TBL;
+        $spotify = ChartsEnum::SPOTIFY_MAIN_TBL;
+        $youtube = ChartsEnum::YOUTUBE_MAIN_TBL;
+
+        $appleLatest   = \QB::table($apple)->where('country_code', $country)->select(\QB::raw('MAX(run_date) AS d'))->first()?->d ?? null;
+        $spotifyLatest = \QB::table($spotify)->where('country_code', $country)->select(\QB::raw('MAX(run_date) AS d'))->first()?->d ?? null;
+        $youtubeLatest = \QB::table($youtube)->where('country_code', $country)->select(\QB::raw('MAX(run_date) AS d'))->first()?->d ?? null;
+
+        $appleMap = [];
+        if ($appleLatest) {
+            $appleRows = \QB::table($apple)
+                ->where('country_code', $country)
+                ->where('run_date', $appleLatest)
+                ->whereIn('match_key', $matchKeys)
+                ->select(['match_key', 'url', 'apple_id'])
+                ->get();
+            foreach ((array) $appleRows as $r) {
+                $r = (array) $r;
+                $appleMap[$r['match_key']] = ['url' => $r['url'], 'apple_id' => $r['apple_id']];
+            }
+        }
+
+        $spotifyMap = [];
+        if ($spotifyLatest) {
+            $spotifyRows = \QB::table($spotify)
+                ->where('country_code', $country)
+                ->where('run_date', $spotifyLatest)
+                ->whereIn('match_key', $matchKeys)
+                ->select(['match_key', 'spotify_id'])
+                ->get();
+            foreach ((array) $spotifyRows as $r) {
+                $r = (array) $r;
+                $spotifyMap[$r['match_key']] = ['spotify_id' => $r['spotify_id']];
+            }
+        }
+
+        $youtubeMap = [];
+        if ($youtubeLatest) {
+            $youtubeRows = \QB::table($youtube)
+                ->where('country_code', $country)
+                ->where('run_date', $youtubeLatest)
+                ->whereIn('match_key', $matchKeys)
+                ->select(['match_key', 'channel_url'])
+                ->get();
+            foreach ((array) $youtubeRows as $r) {
+                $r = (array) $r;
+                $youtubeMap[$r['match_key']] = ['channel_url' => $r['channel_url']];
+            }
+        }
+
+        foreach ($rows as &$row) {
+            $mk = $row->match_key ?? '';
+            $row->on_apple    = isset($appleMap[$mk]);
+            $row->apple_url   = $appleMap[$mk]['url'] ?? null;
+            $row->on_spotify  = isset($spotifyMap[$mk]);
+            $row->spotify_id  = $spotifyMap[$mk]['spotify_id'] ?? null;
+            $row->on_youtube  = isset($youtubeMap[$mk]);
+            $row->youtube_url = $youtubeMap[$mk]['channel_url'] ?? null;
+        }
+        unset($row);
+
+        return $rows;
     }
 
     // ---------------------------------------------------------------

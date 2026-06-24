@@ -103,14 +103,14 @@ class Controller {
 	// public function upgrade() { ... }
 	// public function info() { ... }
 	
-	public function setPagination() {	    
-	    $current_page = isset($this->payload["page"]) ? $this->payload["page"] : 1;
-	    $per_page = isset($this->payload["limit"]) ? $this->payload["limit"] : 0;
-	    
-	    if($per_page > 0):
-	       $this->pagination_limit = $per_page;
-	       $this->pagination_offset = ($current_page - 1) * $per_page;
-	    endif;
+	public function setPagination() {
+	    $current_page = isset($this->payload["page"]) ? (int) $this->payload["page"] : 1;
+	    $per_page = isset($this->payload["limit"]) && (int) $this->payload["limit"] > 0
+	        ? (int) $this->payload["limit"]
+	        : 50;
+
+	    $this->pagination_limit  = $per_page;
+	    $this->pagination_offset = ($current_page - 1) * $per_page;
 	}
 	public function getPagination($total = 0, $results = []) {
 	    $current_page = isset($this->payload["page"]) ? $this->payload["page"] : 1;
