@@ -1,4 +1,4 @@
-<?
+<?php
 ini_set('date.timezone', DEFAULT_TIME_ZONE);
 
 require('autoload.php');

@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Enums;
 
 use Library\Enum;
@@ -112,7 +113,13 @@ class ChartsEnum extends Enum
             self::CHART_TOP      => 'Top Podcasts',
             self::CHART_TRENDING => 'Trending',
         ];
-        return $labels[$chart] ?? ucfirst($chart);
+
+        if (isset($labels[$chart])) {
+            return $labels[$chart];
+        }
+
+        // Humanize any slug: 'true-crime' -> 'True Crime', 'tv-film' -> 'Tv Film'
+        return ucwords(str_replace(['-', '_'], ' ', $chart));
     }
 
 

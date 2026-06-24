@@ -1,4 +1,4 @@
-<?
+<?php
 require DOCUMENT_ROOT.'vendor/autoload.php';
 
 spl_autoload_register(function($className) {

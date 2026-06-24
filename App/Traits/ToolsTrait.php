@@ -1,4 +1,4 @@
-<?
+<?php
 namespace App\Traits;
 
 use Library\Input;
