@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Controllers;
 
 use App\Enums\ChartsEnum;
@@ -135,6 +136,43 @@ class ChartsController extends Controller
             'countries' => $countries,
             'genres'    => $genres,
             'platforms' => $platforms,
+        ]);
+    }
+    public function meta(): void
+    {
+        $defaults = ChartsEnum::defaults();
+
+        $platform = $this->payload['platform'] ?? $defaults['platform'];
+        $country  = strtoupper($this->payload['country'] ?? $defaults['country']);
+        $chart    = $this->payload['chart'] ?? $defaults['chart'];
+
+        if (!ChartsEnum::isValidPlatform($platform)) {
+            $this->sendJson(ResponseStatusEnum::INVALID_INPUT, "Invalid platform");
+        }
+
+        $resolvedChart = ChartsEnum::resolveChart($platform, $chart);
+
+        // Still the gatekeeper — 404 if no data exists
+        $runDate = $this->model->getLatestRunDate($platform, $country, $resolvedChart);
+        if (!$runDate) {
+            $this->sendJson(ResponseStatusEnum::NO_DATA_FOUND, "No data for this combination");
+        }
+
+        // Fetch country display name + flag from DB (single filtered call)
+        $countries   = $this->model->getFilterCountries($platform);
+        $countryData = array_values(array_filter(
+            $countries,
+            fn($c) => strtoupper($c['country_code']) === $country
+        ))[0] ?? null;
+
+        $this->sendJson(ResponseStatusEnum::SUCCESS, "", [
+            'platform'      => $platform,
+            'platform_label' => ChartsEnum::platformLabel($platform),
+            'country'       => strtolower($country),
+            'country_name'  => $countryData['display_name'] ?? strtoupper($country),
+            'country_flag'  => $countryData['flag'] ?? '',
+            'chart'         => $chart,
+            'chart_label'   => ChartsEnum::chartLabel($resolvedChart),
         ]);
     }
 }

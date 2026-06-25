@@ -14,8 +14,11 @@ $router->mount('/auth', function() use ($router) {
 });
 
 $router->mount('/charts', function() use ($router) {
-    $router->get('/', 'ChartsController@getCharts');
+    $router->get('/meta', 'ChartsController@meta');
     $router->get('/filters', 'ChartsController@getFilters');
+    $router->get('/', 'ChartsController@getCharts');
+    
+    
 
 });
 

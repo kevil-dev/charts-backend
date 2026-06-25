@@ -383,10 +383,19 @@ class ChartsModel
 
         $result = [];
         foreach ((array) $rows as $r) {
-            $slug = is_object($r) ? $r->native_id : $r['native_id'];
+            $dbSlug = is_object($r) ? $r->native_id : $r['native_id'];
+
+            // Translate DB-internal slugs back to URL-friendly slugs.
+            // "top-podcasts" in the DB corresponds to "top" in the URL
+            // (ChartsEnum::resolveChart bridges the two at query time).
+            $urlSlug = match ($dbSlug) {
+                'top-podcasts' => ChartsEnum::CHART_TOP,
+                default        => $dbSlug,
+            };
+
             $result[] = [
-                'native_id'    => $slug,
-                'display_name' => ChartsEnum::chartLabel($slug),
+                'native_id'    => $urlSlug,
+                'display_name' => ChartsEnum::chartLabel($urlSlug),
             ];
         }
 
