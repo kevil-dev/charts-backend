@@ -6,8 +6,11 @@ if(isset($_REQUEST["debug"]) && $_REQUEST["debug"] == 1):
     ini_set("error_reporting", E_ALL);
 endif;
 
+$allowed_origins = "http://localhost:3000";
+
 header('Access-Control-Allow-Headers:Content-Type, Authorization,Cache-Control,Pragma,Expires');
-header("Access-Control-Allow-Origin: *");
+header('Access-Control-Allow-Credentials: true');
+header("Access-Control-Allow-Origin: {$allowed_origins}");
 
 if($_SERVER['REQUEST_METHOD'] === "OPTIONS"):
     header("Access-Control-Allow-Methods: POST, GET, DELETE, PUT, PATCH, OPTIONS");

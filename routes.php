@@ -12,6 +12,7 @@ $router->mount('/auth', function() use ($router) {
     $router->post('/login',    'AuthController@login');
     $router->post('/google',   'AuthController@google');
     $router->get('/me',        'AuthController@me');
+    $router->post('/logout', 'AuthController@logout');
 });
 
 $router->mount('/charts', function() use ($router) {
