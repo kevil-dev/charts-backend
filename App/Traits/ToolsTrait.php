@@ -13,7 +13,7 @@ trait ToolsTrait {
 
         // $_POST is empty when client sends Content-Type: application/json
         // — the body arrives in php://input instead, so decode it as fallback
-        if ($request_method == "post" && empty($input)) {
+        if ($request_method != "get" && empty($input)) {
             $raw = file_get_contents('php://input');
             $json = json_decode($raw, true);
             if (is_array($json)) {
