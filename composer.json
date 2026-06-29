@@ -2,6 +2,7 @@
     "require": {
         "guzzlehttp/guzzle": "^7.5",
         "rakit/validation": "^1.4",
-        "usmanhalalit/pixie": "2.*@dev"
+        "usmanhalalit/pixie": "2.*@dev",
+        "google/apiclient": "^2.19"
     }
 }

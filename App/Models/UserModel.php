@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Models;
 
 class UserModel
@@ -16,5 +17,18 @@ class UserModel
     public function findById(int $id): ?object
     {
         return \QB::table('users')->where('id', $id)->first();
+    }
+    public function findByGoogleId(string $googleId): ?object
+    {
+        return \QB::table('users')->where('google_id', $googleId)->first();
+    }
+
+    public function linkGoogle(int $id, string $googleId, ?string $avatarUrl = null): void
+    {
+        \QB::table('users')->where('id', $id)->update([
+            'google_id'  => $googleId,
+            'avatar_url' => $avatarUrl,
+            'updated_at' => date('Y-m-d H:i:s'),
+        ]);
     }
 }

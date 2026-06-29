@@ -18,7 +18,7 @@ class AuthController extends Controller
         $this->middleware([
             $this->auth_user_key => [
                 'class'  => __CLASS__,
-                'except' => ['register', 'login'],
+                'except' => ['register', 'login', 'google'],
             ],
         ]);
 
@@ -122,4 +122,74 @@ class AuthController extends Controller
 
         $this->sendJson(ResponseStatusEnum::SUCCESS, "", ['user' => $data]);
     }
+    public function google(): void
+{
+    $this->validateInput([
+        'credential' => 'required',
+    ]);
+
+    $idToken = $this->payload['credential'];
+
+    // Verify token with Google — checks signature, aud, iss, exp
+    $client  = new \Google_Client(['client_id' => \GOOGLE_CLIENT_ID]);
+    $payload = $client->verifyIdToken($idToken);
+
+    if (!$payload) {
+        $this->sendJson(ResponseStatusEnum::UNAUTHORIZED);
+    }
+
+    $sub    = $payload['sub'];
+    $email  = strtolower($payload['email']);
+    $name   = $payload['name']    ?? $email;
+    $avatar = $payload['picture'] ?? null;
+
+    // 1. Returning Google user?
+    $user = $this->model->findByGoogleId($sub);
+
+    // 2. Not found by sub — existing local account with same email? Auto-link it.
+    if (!$user) {
+        $existing = $this->model->findByEmail($email);
+        if ($existing) {
+            $this->model->linkGoogle((int) $existing->id, $sub, $avatar);
+            $user = $this->model->findById((int) $existing->id);
+        }
+    }
+
+    // 3. Brand-new — create a Google-only account
+    if (!$user) {
+        $id = $this->model->create([
+            'name'          => $name,
+            'email'         => $email,
+            'google_id'     => $sub,
+            'auth_provider' => 'google',
+            'avatar_url'    => $avatar,
+            'password'      => null,
+            'status'        => 1,
+            'created_at'    => date('Y-m-d H:i:s'),
+            'updated_at'    => date('Y-m-d H:i:s'),
+        ]);
+        $user = $this->model->findById($id);
+    }
+
+    // Same deactivation check as local login
+    if ((int) $user->status === 0) {
+        $this->sendJson(ResponseStatusEnum::ACCOUNT_DEACTIVATED);
+    }
+
+    // Issue YOUR platform JWT — identical shape to login()
+    $token = Jwt::generate([
+        'user_id' => encrypt((string) $user->id),
+        'email'   => $user->email,
+        'iat'     => time(),
+    ]);
+
+    $this->sendJson(ResponseStatusEnum::SUCCESS, "", [
+        'token' => $token,
+        'user'  => [
+            'id'    => encrypt((string) $user->id),
+            'name'  => $user->name,
+            'email' => $user->email,
+        ],
+    ]);
+}
 }
