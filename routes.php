@@ -34,6 +34,13 @@ $router->mount('/lists', function() use ($router) {
     $router->delete('/{id}/items/{itemId}',    'ListsController@removeItem');
 });
 
+$router->mount('/billing', function() use ($router) {
+    $router->post('/checkout', 'BillingController@checkout');
+    $router->post('/webhook',  'BillingController@webhook');
+    $router->post('/cancel',   'BillingController@cancel');
+    $router->get('/status',    'BillingController@status');
+});
+
 $router->get('/public/status', function() {
     header('Content-Type: application/json');
     echo json_encode(['status' => 'ok']);

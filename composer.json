@@ -3,6 +3,7 @@
         "guzzlehttp/guzzle": "^7.5",
         "rakit/validation": "^1.4",
         "usmanhalalit/pixie": "2.*@dev",
-        "google/apiclient": "^2.19"
+        "google/apiclient": "^2.19",
+        "razorpay/razorpay": "^2.9"
     }
 }
