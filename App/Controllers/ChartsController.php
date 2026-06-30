@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Enums\ChartsEnum;
 use App\Enums\ResponseStatusEnum;
 use App\Models\ChartsModel;
+use App\Models\UserModel;
 
 class ChartsController extends Controller
 {
@@ -14,6 +15,8 @@ class ChartsController extends Controller
     {
         // call parent first — boots Input, Validator, payload, headers
         parent::__construct($vars);
+
+        $this->resolveUserIfPresent();
 
         $this->model = new ChartsModel();
     }
@@ -63,6 +66,13 @@ class ChartsController extends Controller
         }
 
         $this->setPagination();
+
+        $user = $this->auto_id ? (new UserModel())->findById($this->auto_id) : null;
+        $ent  = $this->getEntitlement($user);
+        if ($ent['row_cap'] !== null) {
+            $this->pagination_limit  = min($this->pagination_limit, $ent['row_cap']);
+            $this->pagination_offset = 0;
+        }
 
         $total = $this->model->getCount($platform, $country, $resolvedChart);
 

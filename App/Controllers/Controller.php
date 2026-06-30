@@ -8,6 +8,7 @@ use Rakit\Validation\Validator;
 
 use App\Traits\ToolsTrait;
 use App\Traits\ThrottleTrait;
+use App\Traits\EntitlementTrait;
 
 // use App\Models\AccountModel;
 // use App\Models\PaymentModel;
@@ -54,7 +55,7 @@ class Controller
 
 	public static $skip_auth = false;
 
-	use ToolsTrait, ThrottleTrait;
+	use ToolsTrait, ThrottleTrait, EntitlementTrait;
 
 	public function __construct($vars = [])
 	{
@@ -120,6 +121,23 @@ class Controller
 		$this->auto_id  = (int) decrypt($payload['user_id']);
 		$this->email_id = $payload['email'] ?? '';
 	}
+	public function resolveUserIfPresent(): void
+	{
+		$headerToken = str_replace('Bearer ', '', $this->user_token ?? '');
+		$cookieToken = $this->input->cookie('mp_token') ?? '';
+		$token = !empty($headerToken) && $headerToken !== MP_TOKEN ? $headerToken : $cookieToken;
+
+		if (empty($token)) {
+			return;
+		}
+		$payload = \Library\Jwt::validate($token);
+		if (!$payload) {
+			return;
+		}
+		$this->auto_id  = (int) decrypt($payload['user_id']);
+		$this->email_id = $payload['email'] ?? '';
+	}
+
 	// public function setObj($user) { ... }
 	// public function isPaid() { ... }
 	// public function is_trial() { ... }

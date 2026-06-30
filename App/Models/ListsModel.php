@@ -14,6 +14,11 @@ class ListsModel
             ->get() ?? [];
     }
 
+    public function countByUser(int $userId): int
+    {
+        return (int) \QB::table('lists')->where('user_id', $userId)->count();
+    }
+
     public function findById(int $id): ?object
     {
         return \QB::table('lists')

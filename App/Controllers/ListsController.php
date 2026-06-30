@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Enums\ResponseStatusEnum;
 use App\Models\ListsModel;
+use App\Models\UserModel;
 
 class ListsController extends Controller
 {
@@ -30,11 +31,28 @@ class ListsController extends Controller
         $this->model = new ListsModel();
     }
 
+    // ─── Entitlement guard ────────────────────────────────────────────────
+    // Fetches the authed user, computes entitlement, and terminates with
+    // UPGRADE when the user has no active/trialing plan. Returns the
+    // entitlement array so callers can enforce per-tier caps.
+
+    private function requireListsAccess(): array
+    {
+        $user = (new UserModel())->findById($this->auto_id);
+        $ent  = $this->getEntitlement($user);
+        if ($ent['tier'] === null) {
+            $this->sendJson(ResponseStatusEnum::UPGRADE);
+        }
+        return $ent;
+    }
+
     // ─── GET /lists ───────────────────────────────────────────────────────
     // Returns all lists for the authenticated user
 
     public function index(): void
     {
+        $this->requireListsAccess();
+
         $lists = $this->model->getAllByUser($this->auto_id);
 
         $result = array_map(function ($list) {
@@ -55,6 +73,14 @@ class ListsController extends Controller
             'title' => 'required|min:1|max:60',
         ]);
 
+        $ent = $this->requireListsAccess();
+
+        if ($ent['list_cap'] !== null) {
+            if ($this->model->countByUser($this->auto_id) >= $ent['list_cap']) {
+                $this->sendJson(ResponseStatusEnum::LIMIT_EXCEEDED);
+            }
+        }
+
         $title       = $this->payload['title'];
         $description = isset($this->payload['description'])
             ? substr(trim($this->payload['description']), 0, 200)
@@ -73,6 +99,8 @@ class ListsController extends Controller
 
     public function show(string $encryptedId): void
     {
+        $this->requireListsAccess();
+
         $id   = (int) decrypt($encryptedId);
         $list = $this->model->findById($id);
 
@@ -103,6 +131,8 @@ class ListsController extends Controller
 
     public function update(string $encryptedId): void
     {
+        $this->requireListsAccess();
+
         $id   = (int) decrypt($encryptedId);
         $list = $this->model->findById($id);
 
@@ -144,6 +174,8 @@ class ListsController extends Controller
 
     public function destroy(string $encryptedId): void
     {
+        $this->requireListsAccess();
+
         $id   = (int) decrypt($encryptedId);
         $list = $this->model->findById($id);
 
@@ -165,6 +197,8 @@ class ListsController extends Controller
 
     public function share(string $encryptedId): void
     {
+        $this->requireListsAccess();
+
         $id   = (int) decrypt($encryptedId);
         $list = $this->model->findById($id);
 
@@ -198,6 +232,8 @@ class ListsController extends Controller
 
     public function revokeShare(string $encryptedId): void
     {
+        $this->requireListsAccess();
+
         $id   = (int) decrypt($encryptedId);
         $list = $this->model->findById($id);
 
@@ -245,6 +281,8 @@ class ListsController extends Controller
 
     public function addItem(string $encryptedId): void
     {
+        $this->requireListsAccess();
+
         $this->validateInput([
             'podcast_name' => 'required|min:1|max:255',
             'platform'     => 'required|in:apple,spotify,youtube',
@@ -288,6 +326,8 @@ class ListsController extends Controller
 
     public function removeItem(string $encryptedListId, string $encryptedItemId): void
     {
+        $this->requireListsAccess();
+
         $listId = (int) decrypt($encryptedListId);
         $itemId = (int) decrypt($encryptedItemId);
 

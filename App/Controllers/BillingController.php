@@ -125,17 +125,17 @@ class BillingController extends Controller
         $signature = $this->input->request_headers()['X-Razorpay-Signature'] ?? '';
 
         // 1. Signature verification — reject forgeries.
-        // try {
-        //     $this->rzp->utility->verifyWebhookSignature(
-        //         $rawBody,
-        //         $signature,
-        //         RAZORPAY_WEBHOOK_SECRET
-        //     );
-        // } catch (\Exception $e) {
-        //     http_response_code(400);
-        //     echo 'invalid signature';
-        //     exit;
-        // }
+        try {
+            $this->rzp->utility->verifyWebhookSignature(
+                $rawBody,
+                $signature,
+                RAZORPAY_WEBHOOK_SECRET
+            );
+        } catch (\Exception $e) {
+            http_response_code(400);
+            echo 'invalid signature';
+            exit;
+        }
 
         $payload = json_decode($rawBody, true);
         $event   = $payload['event'] ?? '';
