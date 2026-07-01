@@ -34,6 +34,10 @@ $router->mount('/lists', function() use ($router) {
     $router->delete('/{id}/items/{itemId}',    'ListsController@removeItem');
 });
 
+$router->mount('/podcasts', function() use ($router) {
+    $router->get('/meta', 'PodcastController@meta');
+});
+
 $router->mount('/billing', function() use ($router) {
     $router->post('/checkout', 'BillingController@checkout');
     $router->post('/webhook',  'BillingController@webhook');

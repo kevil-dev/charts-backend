@@ -11,11 +11,11 @@ class SubscriptionModel
         return \QB::table('users')->where('id', $userId)->first() ?: null;
     }
 
-    public function setRazorpayCustomerId(int $userId, string $customerId): void
+    public function setStripeCustomerId(int $userId, string $customerId): void
     {
         \QB::table('users')->where('id', $userId)->update([
-            'razorpay_customer_id' => $customerId,
-            'updated_at'           => date('Y-m-d H:i:s'),
+            'stripe_customer_id' => $customerId,
+            'updated_at'         => date('Y-m-d H:i:s'),
         ]);
     }
 
@@ -27,10 +27,10 @@ class SubscriptionModel
 
     // ─── subscriptions table ───────────────────────────────────────────────
 
-    public function findByRazorpaySubId(string $subId): ?object
+    public function findByStripeSubId(string $subId): ?object
     {
         return \QB::table('subscriptions')
-            ->where('razorpay_subscription_id', $subId)
+            ->where('stripe_subscription_id', $subId)
             ->first() ?: null;
     }
 
@@ -38,7 +38,7 @@ class SubscriptionModel
     {
         return \QB::table('subscriptions')
             ->where('user_id', $userId)
-            ->whereIn('status', ['created', 'authenticated', 'active', 'pending'])
+            ->whereIn('status', ['trialing', 'active', 'past_due'])
             ->orderBy('created_at', 'DESC')
             ->first() ?: null;
     }
@@ -50,11 +50,11 @@ class SubscriptionModel
         return \QB::table('subscriptions')->insert($data);
     }
 
-    public function updateByRazorpaySubId(string $subId, array $fields): void
+    public function updateByStripeSubId(string $subId, array $fields): void
     {
         $fields['updated_at'] = date('Y-m-d H:i:s');
         \QB::table('subscriptions')
-            ->where('razorpay_subscription_id', $subId)
+            ->where('stripe_subscription_id', $subId)
             ->update($fields);
     }
 
