@@ -32,6 +32,7 @@ $router->mount('/lists', function() use ($router) {
     $router->delete('/{id}/share',             'ListsController@revokeShare');
     $router->post('/{id}/items',               'ListsController@addItem');
     $router->delete('/{id}/items/{itemId}',    'ListsController@removeItem');
+    $router->post('/{id}/email',               'ListsController@emailExport');
 });
 
 $router->mount('/podcasts', function() use ($router) {

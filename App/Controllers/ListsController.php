@@ -353,4 +353,116 @@ class ListsController extends Controller
 
         $this->sendJson(ResponseStatusEnum::SUCCESS, "Removed from list");
     }
+    // ─── POST /lists/{id}/email ───────────────────────────────────────────
+    // Export the list to the user's email
+
+    public function emailExport(string $encryptedId): void
+    {
+        $tier = $this->requireListsAccess();
+
+        $this->validateInput([
+            'format'    => 'required|in:csv,json',
+            'recipient' => 'required|in:account,custom',
+            'email'     => 'required_if:recipient,custom|email',
+        ]);
+
+        $id   = (int) decrypt($encryptedId);
+        $list = $this->model->findById($id);
+
+        if (!$list) {
+            $this->sendJson(ResponseStatusEnum::NO_DATA_FOUND, "List not found");
+        }
+        if ((int) $list->user_id !== $this->auto_id) {
+            $this->sendJson(ResponseStatusEnum::UNAUTHORIZED);
+        }
+
+        $to = $this->payload['recipient'] === 'account'
+            ? $this->email_id
+            : trim($this->payload['email']);
+
+        $rawItems = $this->model->getItems($id);
+        $items = array_map(fn($item) => (array) $item, $rawItems);
+
+        // Enrich with tier-gated podcast metadata
+        $columns = \App\Enums\EntitlementEnum::META_COLUMNS[$tier] ?? [];
+        if (!empty($columns)) {
+            $matchKeys = array_values(array_filter(array_map(fn($i) => $i['match_key'] ?? '', $items)));
+            if (!empty($matchKeys)) {
+                $metaByKey = (new \App\Models\PodcastMetaModel())->getByMatchKeys($matchKeys, $columns);
+                foreach ($items as &$item) {
+                    $item = array_merge($item, $metaByKey[$item['match_key'] ?? ''] ?? []);
+                }
+                unset($item);
+            }
+        }
+
+        $format = $this->payload['format'];
+        $attachmentFilename = preg_replace('/[^a-zA-Z0-9_\-\.]/', '_', $list->title ?? 'List') . '.' . $format;
+        $attachmentContent = '';
+        $attachmentMime = '';
+
+        if ($format === 'json') {
+            $attachmentContent = json_encode($items, JSON_PRETTY_PRINT);
+            $attachmentMime = 'application/json';
+        } else {
+            // Build CSV string in memory
+            $fp = fopen('php://temp', 'r+');
+            if (count($items) > 0) {
+                $headers = array_keys($items[0]);
+                fputcsv($fp, $headers);
+                foreach ($items as $item) {
+                    $row = [];
+                    foreach ($headers as $header) {
+                        $val = $item[$header] ?? '';
+                        if (is_array($val) || is_object($val)) {
+                            $val = json_encode($val);
+                        }
+                        $row[] = $val;
+                    }
+                    fputcsv($fp, $row);
+                }
+            }
+            rewind($fp);
+            $attachmentContent = stream_get_contents($fp);
+            fclose($fp);
+            $attachmentMime = 'text/csv';
+        }
+
+        // Build HTML Body
+        $itemCount = count($items);
+        $teaser = '';
+        $teaserCount = min(3, $itemCount);
+        for ($i = 0; $i < $teaserCount; $i++) {
+            $teaser .= "<li>" . htmlspecialchars($items[$i]['podcast_name'] ?? 'Unknown') . "</li>";
+        }
+        if ($itemCount > $teaserCount) {
+            $teaser .= "<li>...and " . ($itemCount - $teaserCount) . " more</li>";
+        }
+
+        $htmlTitle = htmlspecialchars($list->title ?? 'List');
+        $htmlDesc = htmlspecialchars($list->description ?? '');
+        $htmlBody = "
+            <h2>{$htmlTitle}</h2>
+            <p>{$htmlDesc}</p>
+            <p><strong>Total items:</strong> {$itemCount}</p>
+            <ul>
+                {$teaser}
+            </ul>
+            <p>Your exported list is attached to this email.</p>
+        ";
+
+        $sent = \Library\Mailer::send($to, "Your exported list: {$htmlTitle}", $htmlBody, [
+            [
+                'filename' => $attachmentFilename,
+                'content'  => $attachmentContent,
+                'mime'     => $attachmentMime,
+            ]
+        ]);
+
+        if (!$sent) {
+            $this->sendJson(ResponseStatusEnum::BAD_REQUEST, "Failed to send email");
+        }
+
+        $this->sendJson(ResponseStatusEnum::SUCCESS, "List emailed");
+    }
 }

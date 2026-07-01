@@ -4,6 +4,7 @@
         "rakit/validation": "^1.4",
         "usmanhalalit/pixie": "2.*@dev",
         "google/apiclient": "^2.19",
-        "stripe/stripe-php": "^20.3"
+        "stripe/stripe-php": "^20.3",
+        "phpmailer/phpmailer": "^7.1"
     }
 }
