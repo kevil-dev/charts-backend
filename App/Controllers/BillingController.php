@@ -18,13 +18,13 @@ class BillingController extends Controller
         // webhook is called by Stripe (no user cookie) — exclude from auth
         $this->middleware([
             $this->auth_user_key => [
-                'class'  => __CLASS__,
+                'class' => __CLASS__,
                 'except' => ['webhook'],
             ],
         ]);
 
         if (isset($this->mw[$this->auth_user_key])) {
-            $this->auto_id  = $this->mw[$this->auth_user_key]->auto_id  ?? null;
+            $this->auto_id = $this->mw[$this->auth_user_key]->auto_id ?? null;
             $this->email_id = $this->mw[$this->auth_user_key]->email_id ?? null;
         }
 
@@ -36,10 +36,10 @@ class BillingController extends Controller
     private function resolvePriceId(string $tier, string $interval): ?string
     {
         $map = [
-            'pro_monthly'   => STRIPE_PRICE_PRO_MONTHLY,
-            'pro_yearly'    => STRIPE_PRICE_PRO_YEARLY,
+            'pro_monthly' => STRIPE_PRICE_PRO_MONTHLY,
+            'pro_yearly' => STRIPE_PRICE_PRO_YEARLY,
             'elite_monthly' => STRIPE_PRICE_ELITE_MONTHLY,
-            'elite_yearly'  => STRIPE_PRICE_ELITE_YEARLY,
+            'elite_yearly' => STRIPE_PRICE_ELITE_YEARLY,
         ];
         return $map["{$tier}_{$interval}"] ?? null;
     }
@@ -53,11 +53,11 @@ class BillingController extends Controller
     public function checkout(): void
     {
         $this->validateInput([
-            'tier'     => 'required|in:pro,elite',
+            'tier' => 'required|in:pro,elite',
             'interval' => 'required|in:monthly,yearly',
         ]);
 
-        $tier     = $this->payload['tier'];
+        $tier = $this->payload['tier'];
         $interval = $this->payload['interval'];
 
         $priceId = $this->resolvePriceId($tier, $interval);
@@ -80,7 +80,7 @@ class BillingController extends Controller
             $customerId = $user->stripe_customer_id ?? null;
             if (!$customerId) {
                 $customer = \Stripe\Customer::create([
-                    'email'    => $user->email,
+                    'email' => $user->email,
                     'metadata' => ['user_id' => (string) $this->auto_id],
                 ]);
                 $customerId = $customer->id;
@@ -88,21 +88,23 @@ class BillingController extends Controller
             }
 
             $session = \Stripe\Checkout\Session::create([
-                'mode'     => 'subscription',
+                'mode' => 'subscription',
                 'customer' => $customerId,
-                'line_items' => [[
-                    'price'    => $priceId,
-                    'quantity' => 1,
-                ]],
+                'line_items' => [
+                    [
+                        'price' => $priceId,
+                        'quantity' => 1,
+                    ]
+                ],
                 'subscription_data' => [
                     'trial_period_days' => 14,
-                    'metadata'          => [
+                    'metadata' => [
                         'user_id' => (string) $this->auto_id,
-                        'tier'    => $tier,
+                        'tier' => $tier,
                     ],
                 ],
                 'success_url' => STRIPE_SUCCESS_URL,
-                'cancel_url'  => STRIPE_CANCEL_URL,
+                'cancel_url' => STRIPE_CANCEL_URL,
             ]);
         } catch (\Exception $e) {
             $this->sendJson(ResponseStatusEnum::UNABLE_TO_PROCESS, $e->getMessage());
@@ -119,7 +121,7 @@ class BillingController extends Controller
 
     public function webhook(): void
     {
-        $rawBody   = file_get_contents('php://input');
+        $rawBody = file_get_contents('php://input');
         $sigHeader = $this->input->request_headers()['Stripe-Signature'] ?? '';
 
         // 1. Signature verification — reject forgeries.
@@ -150,6 +152,10 @@ class BillingController extends Controller
                 $this->handleCheckoutCompleted($event->data->object);
                 break;
 
+            case 'customer.subscription.created':
+                $this->handleSubscriptionCreated($event->data->object);
+                break;
+
             case 'customer.subscription.updated':
                 $this->handleSubscriptionUpdated($event->data->object);
                 break;
@@ -170,35 +176,49 @@ class BillingController extends Controller
 
     private function handleCheckoutCompleted(object $session): void
     {
-        $stripeSubId  = $session->subscription;
-        $stripeCustId = $session->customer;
-        $userId       = (int) $session->metadata->user_id;
-        $tier         = $session->metadata->tier;
+        $userId = (int) $session->metadata->user_id;
+        if (!$userId) {
+            return;
+        }
 
-        $stripeSub = \Stripe\Subscription::retrieve($stripeSubId);
+        $this->model->setUserPlan($userId, [
+            'stripe_customer_id' => $session->customer,
+        ]);
+    }
 
-        $stripePriceId    = $stripeSub->items->data[0]->price->id;
+    private function handleSubscriptionCreated(\Stripe\Subscription $stripeSub): void
+    {
+        $userId = isset($stripeSub->metadata->user_id)
+            ? (int) $stripeSub->metadata->user_id
+            : null;
+        $tier   = $stripeSub->metadata->tier ?? null;
+
+        if (!$userId || !$tier) {
+            return;
+        }
+
+        $priceId          = $stripeSub->items->data[0]->price->id;
+        $status           = $stripeSub->status;
         $currentPeriodEnd = date('Y-m-d H:i:s', $stripeSub->current_period_end);
-        $stripeStatus     = $stripeSub->status;
+        $trialEnd         = $stripeSub->trial_end
+            ? date('Y-m-d H:i:s', $stripeSub->trial_end)
+            : null;
 
         $this->model->create([
-            'stripe_subscription_id' => $stripeSubId,
-            'stripe_customer_id'     => $stripeCustId,
-            'stripe_price_id'        => $stripePriceId,
+            'user_id'                => $userId,
+            'stripe_subscription_id' => $stripeSub->id,
+            'stripe_customer_id'     => $stripeSub->customer,
+            'stripe_price_id'        => $priceId,
             'tier'                   => $tier,
-            'status'                 => $stripeStatus,
+            'status'                 => $status,
             'current_period_end'     => $currentPeriodEnd,
             'cancel_at_period_end'   => 0,
-            'user_id'                => $userId,
         ]);
 
         $this->model->setUserPlan($userId, [
-            'stripe_customer_id' => $stripeCustId,
-            'plan_status'        => $stripeStatus,
-            'selected_tier'      => $tier,
-            'trial_ends_at'      => $stripeStatus === 'trialing'
-                ? date('Y-m-d H:i:s', $stripeSub->trial_end)
-                : null,
+            'plan_status'   => $status,
+            'selected_tier' => $tier,
+            'trial_ends_at' => $trialEnd,
         ]);
     }
 
@@ -209,18 +229,21 @@ class BillingController extends Controller
             return;
         }
 
-        $newStatus         = $stripeSub->status;
-        $currentPeriodEnd  = date('Y-m-d H:i:s', $stripeSub->current_period_end);
+        $newStatus = $stripeSub->status;
+        $currentPeriodEnd = date('Y-m-d H:i:s', $stripeSub->current_period_end);
         $cancelAtPeriodEnd = (int) $stripeSub->cancel_at_period_end;
 
         $this->model->updateByStripeSubId($stripeSub->id, [
-            'status'               => $newStatus,
-            'current_period_end'   => $currentPeriodEnd,
+            'status' => $newStatus,
+            'current_period_end' => $currentPeriodEnd,
             'cancel_at_period_end' => $cancelAtPeriodEnd,
         ]);
 
         $this->model->setUserPlan((int) $local->user_id, [
             'plan_status' => $newStatus,
+            'trial_ends_at' => $stripeSub->trial_end
+                ? date('Y-m-d H:i:s', $stripeSub->trial_end)
+                : null,
         ]);
     }
 
@@ -236,7 +259,7 @@ class BillingController extends Controller
         ]);
 
         $this->model->setUserPlan((int) $local->user_id, [
-            'plan_status'   => 'canceled',
+            'plan_status' => 'canceled',
             'selected_tier' => null,
             'trial_ends_at' => null,
         ]);
@@ -301,10 +324,10 @@ class BillingController extends Controller
         $sub = $this->model->findActiveByUser($this->auto_id);
 
         $this->sendJson(ResponseStatusEnum::SUCCESS, "", [
-            'plan_status'          => $user->plan_status,
-            'selected_tier'        => $user->selected_tier,
-            'trial_ends_at'        => $user->trial_ends_at,
-            'current_period_end'   => $sub->current_period_end ?? null,
+            'plan_status' => $user->plan_status,
+            'selected_tier' => $user->selected_tier,
+            'trial_ends_at' => $user->trial_ends_at,
+            'current_period_end' => $sub->current_period_end ?? null,
             'cancel_at_period_end' => $sub ? (bool) $sub->cancel_at_period_end : false,
         ]);
     }
