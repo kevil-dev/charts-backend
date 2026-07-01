@@ -6,25 +6,34 @@ use App\Enums\EntitlementEnum;
 
 trait EntitlementTrait
 {
-    public function getEntitlement(?object $user): array
+    public function resolveTier(?object $user): string
     {
-        $entitled = $user !== null && in_array($user->plan_status ?? null, ['trialing', 'active'], true);
-
-        if (!$entitled) {
-            return ['tier' => null, 'list_cap' => 0, 'row_cap' => EntitlementEnum::GUEST_ROW_CAP];
+        if ($user === null) {
+            return 'guest';
         }
 
-        $tier = $user->selected_tier ?? null;
+        $planStatus = $user->plan_status ?? null;
+        $tier       = $user->selected_tier ?? null;
 
-        if ($tier === 'tier1') {
-            return ['tier' => 'tier1', 'list_cap' => EntitlementEnum::TIER1_LIST_CAP, 'row_cap' => null];
+        if (in_array($planStatus, ['trialing', 'active', 'past_due'], true)) {
+            if ($tier === 'pro') {
+                return 'pro';
+            }
+            if ($tier === 'elite') {
+                return 'elite';
+            }
         }
 
-        if ($tier === 'tier2') {
-            return ['tier' => 'tier2', 'list_cap' => null, 'row_cap' => null];
-        }
+        return 'free';
+    }
 
-        // Entitled but tier missing/unknown — defensive fallback
-        return ['tier' => null, 'list_cap' => 0, 'row_cap' => EntitlementEnum::GUEST_ROW_CAP];
+    public function getListCap(string $tier): ?int
+    {
+        return EntitlementEnum::LIST_CAPS[$tier] ?? 0;
+    }
+
+    public function getMetaColumns(string $tier): array
+    {
+        return EntitlementEnum::META_COLUMNS[$tier] ?? [];
     }
 }

@@ -32,18 +32,18 @@ class ListsController extends Controller
     }
 
     // ─── Entitlement guard ────────────────────────────────────────────────
-    // Fetches the authed user, computes entitlement, and terminates with
-    // UPGRADE when the user has no active/trialing plan. Returns the
-    // entitlement array so callers can enforce per-tier caps.
+    // Fetches the authed user, resolves their tier, and terminates with
+    // UPGRADE when the user is a guest. Returns the tier so callers can
+    // enforce per-tier caps.
 
-    private function requireListsAccess(): array
+    private function requireListsAccess(): string
     {
         $user = (new UserModel())->findById($this->auto_id);
-        $ent  = $this->getEntitlement($user);
-        if ($ent['tier'] === null) {
+        $tier = $this->resolveTier($user);
+        if ($tier === 'guest') {
             $this->sendJson(ResponseStatusEnum::UPGRADE);
         }
-        return $ent;
+        return $tier;
     }
 
     // ─── GET /lists ───────────────────────────────────────────────────────
@@ -73,12 +73,11 @@ class ListsController extends Controller
             'title' => 'required|min:1|max:60',
         ]);
 
-        $ent = $this->requireListsAccess();
+        $tier = $this->requireListsAccess();
+        $cap  = $this->getListCap($tier);
 
-        if ($ent['list_cap'] !== null) {
-            if ($this->model->countByUser($this->auto_id) >= $ent['list_cap']) {
-                $this->sendJson(ResponseStatusEnum::LIMIT_EXCEEDED);
-            }
+        if ($cap !== null && $this->model->countByUser($this->auto_id) >= $cap) {
+            $this->sendJson(ResponseStatusEnum::LIMIT_EXCEEDED);
         }
 
         $title       = $this->payload['title'];
