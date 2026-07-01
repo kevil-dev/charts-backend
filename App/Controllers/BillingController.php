@@ -181,9 +181,33 @@ class BillingController extends Controller
             return;
         }
 
+        // Always sync the customer ID.
         $this->model->setUserPlan($userId, [
             'stripe_customer_id' => $session->customer,
         ]);
+
+        // Eagerly sync plan_status so /billing/status reflects reality
+        // before the separate customer.subscription.created event arrives.
+        // If that event follows (it always does), setUserPlan is idempotent —
+        // writing the same values twice causes no harm.
+        if (!empty($session->subscription)) {
+            try {
+                $stripeSub = \Stripe\Subscription::retrieve($session->subscription);
+                $tier      = $stripeSub->metadata->tier ?? null;
+                $trialEnd  = $stripeSub->trial_end
+                    ? date('Y-m-d H:i:s', $stripeSub->trial_end)
+                    : null;
+
+                $this->model->setUserPlan($userId, [
+                    'plan_status'   => $stripeSub->status,
+                    'selected_tier' => $tier,
+                    'trial_ends_at' => $trialEnd,
+                ]);
+            } catch (\Exception $e) {
+                // Non-fatal — customer.subscription.created will follow
+                // and sync the plan fields regardless.
+            }
+        }
     }
 
     private function handleSubscriptionCreated(\Stripe\Subscription $stripeSub): void
@@ -199,7 +223,11 @@ class BillingController extends Controller
 
         $priceId          = $stripeSub->items->data[0]->price->id;
         $status           = $stripeSub->status;
-        $currentPeriodEnd = date('Y-m-d H:i:s', $stripeSub->current_period_end);
+        // For trialing subscriptions, current_period_end = trial_end (Stripe docs confirm this).
+        // Stripe CLI test events send current_period_end = now instead — so we prefer
+        // trial_end when it exists to get the correct date in both test and production.
+        $effectivePeriodEnd = $stripeSub->trial_end ?? $stripeSub->current_period_end;
+        $currentPeriodEnd = date('Y-m-d H:i:s', $effectivePeriodEnd);
         $trialEnd         = $stripeSub->trial_end
             ? date('Y-m-d H:i:s', $stripeSub->trial_end)
             : null;
@@ -230,7 +258,8 @@ class BillingController extends Controller
         }
 
         $newStatus = $stripeSub->status;
-        $currentPeriodEnd = date('Y-m-d H:i:s', $stripeSub->current_period_end);
+        $effectivePeriodEnd = $stripeSub->trial_end ?? $stripeSub->current_period_end;
+        $currentPeriodEnd = date('Y-m-d H:i:s', $effectivePeriodEnd);
         $cancelAtPeriodEnd = (int) $stripeSub->cancel_at_period_end;
 
         $this->model->updateByStripeSubId($stripeSub->id, [
@@ -310,6 +339,44 @@ class BillingController extends Controller
         ]);
 
         $this->sendJson(ResponseStatusEnum::SUCCESS, "Subscription will end at the end of the current period.");
+    }
+
+    // ─── POST /billing/upgrade ─────────────────────────────────────────────
+    // Upgrade an active Pro subscription to Elite (prorated, same interval).
+
+    public function upgrade(): void
+    {
+        $sub = $this->model->findActiveByUser($this->auto_id);
+        if (!$sub) {
+            $this->sendJson(ResponseStatusEnum::NO_SUBSCRIPTION);
+        }
+        if ($sub->tier !== 'pro') {
+            $this->sendJson(ResponseStatusEnum::BAD_REQUEST, 'Only Pro subscriptions can be upgraded to Elite.');
+        }
+
+        $interval = $sub->stripe_price_id === STRIPE_PRICE_PRO_YEARLY ? 'yearly' : 'monthly';
+        $newPriceId = $interval === 'yearly' ? STRIPE_PRICE_ELITE_YEARLY : STRIPE_PRICE_ELITE_MONTHLY;
+
+        try {
+            $stripeSub = \Stripe\Subscription::retrieve($sub->stripe_subscription_id);
+            $itemId = $stripeSub->items->data[0]->id;
+
+            \Stripe\Subscription::update($sub->stripe_subscription_id, [
+                'items' => [['id' => $itemId, 'price' => $newPriceId]],
+                'proration_behavior' => 'create_prorations',
+            ]);
+        } catch (\Exception $e) {
+            $this->sendJson(ResponseStatusEnum::UNABLE_TO_PROCESS, $e->getMessage());
+        }
+
+        $this->model->updateByStripeSubId($sub->stripe_subscription_id, [
+            'tier' => 'elite',
+            'stripe_price_id' => $newPriceId,
+        ]);
+
+        $this->model->setUserPlan($this->auto_id, ['selected_tier' => 'elite']);
+
+        $this->sendJson(ResponseStatusEnum::SUCCESS, "Upgraded to Elite.");
     }
 
     // ─── GET /billing/status ───────────────────────────────────────────────

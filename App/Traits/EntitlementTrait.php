@@ -29,7 +29,9 @@ trait EntitlementTrait
 
     public function getListCap(string $tier): ?int
     {
-        return EntitlementEnum::LIST_CAPS[$tier] ?? 0;
+        return array_key_exists($tier, EntitlementEnum::LIST_CAPS) 
+            ? EntitlementEnum::LIST_CAPS[$tier] 
+            : 0;
     }
 
     public function getMetaColumns(string $tier): array

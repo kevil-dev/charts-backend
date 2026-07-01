@@ -55,11 +55,14 @@ class ListsController extends Controller
 
         $lists = $this->model->getAllByUser($this->auto_id);
 
-        $result = array_map(function ($list) {
+        $result = [];
+        foreach ($lists as $list) {
             $list = (array) $list;
+            $list['item_count'] = $this->model->getItemCount((int) $list['id']);
+            $list['items'] = array_map(fn($item) => (array) $item, $this->model->getFirstFourArtworks((int) $list['id']));
             $list['id'] = encrypt((string) $list['id']);
-            return $list;
-        }, $lists);
+            $result[] = $list;
+        }
 
         $this->sendJson(ResponseStatusEnum::SUCCESS, "", ['lists' => $result]);
     }

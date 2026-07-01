@@ -42,6 +42,7 @@ $router->mount('/billing', function() use ($router) {
     $router->post('/checkout', 'BillingController@checkout');
     $router->post('/webhook',  'BillingController@webhook');
     $router->post('/cancel',   'BillingController@cancel');
+    $router->post('/upgrade',  'BillingController@upgrade');
     $router->get('/status',    'BillingController@status');
 });
 
