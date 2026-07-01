@@ -428,28 +428,16 @@ class ListsController extends Controller
             $attachmentMime = 'text/csv';
         }
 
-        // Build HTML Body
-        $itemCount = count($items);
-        $teaser = '';
-        $teaserCount = min(3, $itemCount);
-        for ($i = 0; $i < $teaserCount; $i++) {
-            $teaser .= "<li>" . htmlspecialchars($items[$i]['podcast_name'] ?? 'Unknown') . "</li>";
-        }
-        if ($itemCount > $teaserCount) {
-            $teaser .= "<li>...and " . ($itemCount - $teaserCount) . " more</li>";
-        }
+        // Build HTML Body using Views and CssToInlineStyles
+        ob_start();
+        include DOCUMENT_ROOT . 'App/Views/Emails/list_export.php';
+        $rawHtml = ob_get_clean();
+        
+        $css = file_get_contents(DOCUMENT_ROOT . 'App/Views/Emails/list_export.css');
+        $cssToInlineStyles = new \TijsVerkoyen\CssToInlineStyles\CssToInlineStyles();
+        $htmlBody = $cssToInlineStyles->convert($rawHtml, $css);
 
         $htmlTitle = htmlspecialchars($list->title ?? 'List');
-        $htmlDesc = htmlspecialchars($list->description ?? '');
-        $htmlBody = "
-            <h2>{$htmlTitle}</h2>
-            <p>{$htmlDesc}</p>
-            <p><strong>Total items:</strong> {$itemCount}</p>
-            <ul>
-                {$teaser}
-            </ul>
-            <p>Your exported list is attached to this email.</p>
-        ";
 
         $sent = \Library\Mailer::send($to, "Your exported list: {$htmlTitle}", $htmlBody, [
             [
