@@ -58,6 +58,17 @@ class SubscriptionModel
             ->update($fields);
     }
 
+    public function updateCardByStripeSubId(string $subId, string $brand, string $last4): void
+    {
+        \QB::table('subscriptions')
+            ->where('stripe_subscription_id', $subId)
+            ->update([
+                'card_brand' => $brand,
+                'card_last4' => $last4,
+                'updated_at' => date('Y-m-d H:i:s'),
+            ]);
+    }
+
     // ─── webhook idempotency ───────────────────────────────────────────────
 
     public function eventAlreadyProcessed(string $eventId): bool
