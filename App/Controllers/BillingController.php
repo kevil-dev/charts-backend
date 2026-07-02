@@ -2,6 +2,7 @@
 
 namespace App\Controllers;
 
+use App\Enums\PlanEnum;
 use App\Enums\ResponseStatusEnum;
 use App\Models\SubscriptionModel;
 
@@ -35,12 +36,10 @@ class BillingController extends Controller
 
     private function resolvePriceId(string $tier, string $interval): ?string
     {
-        $map = [
-            'pro_monthly' => STRIPE_PRICE_PRO_MONTHLY,
-            'pro_yearly' => STRIPE_PRICE_PRO_YEARLY,
-            'elite_monthly' => STRIPE_PRICE_ELITE_MONTHLY,
-            'elite_yearly' => STRIPE_PRICE_ELITE_YEARLY,
-        ];
+        $map = [];
+        foreach (array_keys(PlanEnum::PRICES) as $key) {
+            $map[$key] = constant('STRIPE_PRICE_' . strtoupper($key));
+        }
         return $map["{$tier}_{$interval}"] ?? null;
     }
 
@@ -97,7 +96,7 @@ class BillingController extends Controller
                     ]
                 ],
                 'subscription_data' => [
-                    'trial_period_days' => 14,
+                    'trial_period_days' => PlanEnum::TRIAL_DAYS,
                     'metadata' => [
                         'user_id' => (string) $this->auto_id,
                         'tier' => $tier,
@@ -166,6 +165,10 @@ class BillingController extends Controller
 
             case 'invoice.payment_failed':
                 $this->handlePaymentFailed($event->data->object);
+                break;
+
+            case 'invoice.payment_succeeded':
+                $this->handlePaymentSucceeded($event->data->object);
                 break;
         }
 
@@ -315,6 +318,30 @@ class BillingController extends Controller
         ]);
     }
 
+    private function handlePaymentSucceeded(object $invoice): void
+    {
+        $stripeSubId = $invoice->subscription;
+        if (!$stripeSubId) {
+            return;
+        }
+
+        $paymentIntentId = $invoice->payment_intent;
+        if (!$paymentIntentId) {
+            return;
+        }
+
+        $paymentIntent = \Stripe\PaymentIntent::retrieve($paymentIntentId, ['expand' => ['payment_method']]);
+        $pm = $paymentIntent->payment_method;
+
+        $brand = $pm->card->brand ?? null;
+        $last4 = $pm->card->last4 ?? null;
+        if (!$brand || !$last4) {
+            return;
+        }
+
+        $this->model->updateCardByStripeSubId($stripeSubId, $brand, $last4);
+    }
+
     // ─── POST /billing/cancel ──────────────────────────────────────────────
     // Cancel at period end (no refund, access until current_period_end).
     // Local plan_status is NOT flipped here — the webhook does that.
@@ -390,12 +417,30 @@ class BillingController extends Controller
 
         $sub = $this->model->findActiveByUser($this->auto_id);
 
+        $interval = null;
+        $amount = null;
+        if ($sub) {
+            $priceMap = [];
+            foreach (array_keys(PlanEnum::PRICES) as $key) {
+                $priceMap[constant('STRIPE_PRICE_' . strtoupper($key))] = $key;
+            }
+            $matchedKey = $priceMap[$sub->stripe_price_id] ?? null;
+            if ($matchedKey) {
+                $interval = PlanEnum::PRICES[$matchedKey]['interval'];
+                $amount = PlanEnum::PRICES[$matchedKey]['amount'];
+            }
+        }
+
         $this->sendJson(ResponseStatusEnum::SUCCESS, "", [
             'plan_status' => $user->plan_status,
             'selected_tier' => $user->selected_tier,
             'trial_ends_at' => $user->trial_ends_at,
             'current_period_end' => $sub->current_period_end ?? null,
             'cancel_at_period_end' => $sub ? (bool) $sub->cancel_at_period_end : false,
+            'interval' => $interval,
+            'amount' => $amount,
+            'card_brand' => $sub->card_brand ?? null,
+            'card_last4' => $sub->card_last4 ?? null,
         ]);
     }
 }
