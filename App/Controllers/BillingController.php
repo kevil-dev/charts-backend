@@ -2,6 +2,7 @@
 
 namespace App\Controllers;
 
+use App\Enums\PlanEnum;
 use App\Enums\ResponseStatusEnum;
 use App\Models\SubscriptionModel;
 
@@ -35,12 +36,10 @@ class BillingController extends Controller
 
     private function resolvePriceId(string $tier, string $interval): ?string
     {
-        $map = [
-            'pro_monthly' => STRIPE_PRICE_PRO_MONTHLY,
-            'pro_yearly' => STRIPE_PRICE_PRO_YEARLY,
-            'elite_monthly' => STRIPE_PRICE_ELITE_MONTHLY,
-            'elite_yearly' => STRIPE_PRICE_ELITE_YEARLY,
-        ];
+        $map = [];
+        foreach (array_keys(PlanEnum::PRICES) as $key) {
+            $map[$key] = constant('STRIPE_PRICE_' . strtoupper($key));
+        }
         return $map["{$tier}_{$interval}"] ?? null;
     }
 
@@ -97,7 +96,7 @@ class BillingController extends Controller
                     ]
                 ],
                 'subscription_data' => [
-                    'trial_period_days' => 14,
+                    'trial_period_days' => PlanEnum::TRIAL_DAYS,
                     'metadata' => [
                         'user_id' => (string) $this->auto_id,
                         'tier' => $tier,
