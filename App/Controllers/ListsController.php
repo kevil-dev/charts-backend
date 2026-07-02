@@ -88,6 +88,15 @@ class ListsController extends Controller
             ? substr(trim($this->payload['description']), 0, 200)
             : null;
 
+        $existing = \QB::table('lists')
+            ->where('user_id', $this->auto_id)
+            ->where('title', $title)
+            ->first();
+
+        if ($existing) {
+            $this->sendJson(ResponseStatusEnum::INVALID_INPUT, "You already have a list with that name");
+        }
+
         $id = $this->model->create($this->auto_id, $title, $description);
 
         $list = (array) $this->model->findById($id);
@@ -154,6 +163,16 @@ class ListsController extends Controller
                 $this->sendJson(ResponseStatusEnum::INVALID_INPUT, "Title must be 1–60 characters");
             }
             $fields['title'] = $title;
+
+            $duplicate = \QB::table('lists')
+                ->where('user_id', $this->auto_id)
+                ->where('title', $fields['title'])
+                ->whereNot('id', $id)
+                ->first();
+
+            if ($duplicate) {
+                $this->sendJson(ResponseStatusEnum::INVALID_INPUT, "You already have a list with that name");
+            }
         }
 
         if (array_key_exists('description', $this->payload)) {
